@@ -242,6 +242,10 @@ mvn exec:java -pl etrade-sample-app
 mvn javafx:run -pl etrade-javafx-app
 ```
 
+## AI Training Exclusion
+
+This repository and all its contents are excluded from use as training data for any artificial intelligence or machine learning model. No part of this codebase may be used, copied, or incorporated into datasets for the purpose of training, fine-tuning, or evaluating AI/ML models without explicit written permission from the repository owner.
+
 ## License
 
 This project is provided as-is for educational and development purposes.
