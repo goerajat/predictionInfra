@@ -380,4 +380,4 @@ etrade-api/
 
 ## License
 
-Part of the online-betting platform.
+Part of the predictionInfra platform.

@@ -3,12 +3,12 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.betting</groupId>
-  <artifactId>online-betting</artifactId>
+  <artifactId>predictionInfra</artifactId>
   <version>1.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
 
-  <name>online-betting</name>
-  <description>Online Betting Platform - Parent POM</description>
+  <name>predictionInfra</name>
+  <description>Prediction Infrastructure Platform - Parent POM</description>
 
   <modules>
     <module>marketdata-api</module>
@@ -80,9 +80,9 @@
   </dependencyManagement>
 
   <scm>
-    <connection>scm:git:https://github.com/goerajat/online-betting.git</connection>
-    <developerConnection>scm:git:https://github.com/goerajat/online-betting.git</developerConnection>
-    <url>https://github.com/goerajat/online-betting</url>
+    <connection>scm:git:https://github.com/goerajat/predictionInfra.git</connection>
+    <developerConnection>scm:git:https://github.com/goerajat/predictionInfra.git</developerConnection>
+    <url>https://github.com/goerajat/predictionInfra</url>
     <tag>HEAD</tag>
   </scm>
 
@@ -90,7 +90,7 @@
     <repository>
       <id>github</id>
       <name>GitHub Packages</name>
-      <url>https://maven.pkg.github.com/goerajat/online-betting</url>
+      <url>https://maven.pkg.github.com/goerajat/predictionInfra</url>
     </repository>
   </distributionManagement>
 
