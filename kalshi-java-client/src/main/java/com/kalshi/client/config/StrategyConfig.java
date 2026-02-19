@@ -93,6 +93,12 @@ public class StrategyConfig {
     // Market data configuration (external data like E*TRADE)
     private String marketDataSymbol;
 
+    // Transport mode: "rest", "fix", "fix-with-rest-fallback"
+    private String transportMode = "rest";
+
+    // Raw properties (needed for FIX config which lives in kalshi-fix-transport module)
+    private Properties rawProperties;
+
     /**
      * Create an empty configuration.
      */
@@ -246,6 +252,13 @@ public class StrategyConfig {
         // Market data configuration
         config.marketDataSymbol = getPropertyOrNull(props, "marketdata.symbol");
 
+        // Transport mode
+        config.transportMode = props.getProperty("transport.mode", "rest");
+
+        // Store raw properties for FIX config (parsed by kalshi-fix-transport module)
+        config.rawProperties = new Properties();
+        config.rawProperties.putAll(props);
+
         return config;
     }
 
@@ -366,6 +379,14 @@ public class StrategyConfig {
 
     public String getMarketDataSymbol() {
         return marketDataSymbol;
+    }
+
+    public String getTransportMode() {
+        return transportMode;
+    }
+
+    public Properties getRawProperties() {
+        return rawProperties;
     }
 
     /**

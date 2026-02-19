@@ -76,6 +76,7 @@ public class StrategyLauncher {
     private final List<Consumer<String>> progressListeners = new ArrayList<>();
     private volatile boolean launched = false;
     private volatile boolean launching = false;
+    private AutoCloseable transportLifecycle;
 
     /**
      * Create a StrategyLauncher with existing services.
@@ -736,6 +737,13 @@ public class StrategyLauncher {
     // ==================== Lifecycle ====================
 
     /**
+     * Set a transport lifecycle resource (e.g., FIX session manager) to be closed on shutdown.
+     */
+    public void setTransportLifecycle(AutoCloseable lifecycle) {
+        this.transportLifecycle = lifecycle;
+    }
+
+    /**
      * Shutdown all strategies and resources.
      */
     public void shutdown() {
@@ -744,6 +752,13 @@ public class StrategyLauncher {
         }
         if (eventFilter != null) {
             eventFilter.shutdown();
+        }
+        if (transportLifecycle != null) {
+            try {
+                transportLifecycle.close();
+            } catch (Exception e) {
+                log.error("Error stopping transport: {}", e.getMessage());
+            }
         }
         launched = false;
         launching = false;

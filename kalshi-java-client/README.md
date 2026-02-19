@@ -6,6 +6,7 @@ A Java library for interacting with the [Kalshi REST API](https://docs.kalshi.co
 
 - **Market Data**: Retrieve series, events, markets, and orderbooks
 - **Order Management**: Create, cancel, and amend orders
+- **Pluggable Order Transport**: Route orders via REST API or FIX protocol through the `OrderTransport` interface
 - **Authentication**: RSA-PSS SHA256 signature authentication
 - **Type-Safe**: Strongly typed domain objects
 - **Builder Pattern**: Fluent API for building requests
@@ -185,6 +186,87 @@ List<Trade> fills = api.orders().getFills();
 
 // Get fills for a specific market
 List<Trade> marketFills = api.orders().getFillsByMarket("MARKET-TICKER");
+```
+
+## Order Transport
+
+The `OrderService` routes all order operations (create, cancel, amend) through an `OrderTransport` interface. By default, it uses `RestOrderTransport` (HTTP API). An alternative transport can be plugged in at runtime — the `kalshi-fix-transport` module provides a FIX protocol implementation.
+
+### OrderTransport Interface
+
+```java
+public interface OrderTransport {
+    Order createOrder(CreateOrderRequest request);
+    Order cancelOrder(String orderId);
+    void cancelOrders(List<String> orderIds);
+    Order amendOrder(String orderId, AmendOrderRequest request);
+    boolean isAvailable();
+    TransportType getType();  // REST or FIX
+}
+```
+
+### Default Behavior (REST)
+
+With no transport configured, `OrderService` uses `RestOrderTransport` internally. All existing code continues to work unchanged:
+
+```java
+// These all route through REST by default
+api.orders().createOrder(request);
+api.orders().buyYes("TICKER", 10, 50);
+api.orders().cancelOrder("ORDER-ID");
+api.orders().amendOrder("ORDER-ID", amendRequest);
+```
+
+### Configuring an Alternative Transport
+
+```java
+// Set a custom transport on the order service
+api.orders().setOrderTransport(myCustomTransport);
+
+// Orders now route through the custom transport (if available)
+// Risk checking still happens in OrderService before delegation
+api.orders().buyYes("TICKER", 10, 50);  // → myCustomTransport.createOrder(...)
+```
+
+When a custom transport is set, `OrderService` checks `transport.isAvailable()` before each call. If the transport is unavailable, it transparently falls back to the built-in REST transport.
+
+### Built-in Transports
+
+| Class | Type | Description |
+|-------|------|-------------|
+| `RestOrderTransport` | REST | HTTP calls via `KalshiClient` (default, always available) |
+| `FixOrderTransport` | FIX | FIX NewOrderSingle/Cancel/Amend via persistent session (in `kalshi-fix-transport`) |
+| `FallbackOrderTransport` | FIX/REST | Tries FIX first, falls back to REST on failure (in `kalshi-fix-transport`) |
+
+### Implementing a Custom Transport
+
+```java
+public class MyTransport implements OrderTransport {
+
+    @Override
+    public Order createOrder(CreateOrderRequest request) {
+        // Your order routing logic here
+    }
+
+    @Override
+    public Order cancelOrder(String orderId) { /* ... */ }
+
+    @Override
+    public void cancelOrders(List<String> orderIds) { /* ... */ }
+
+    @Override
+    public Order amendOrder(String orderId, AmendOrderRequest request) { /* ... */ }
+
+    @Override
+    public boolean isAvailable() {
+        return true;  // Return false to trigger REST fallback
+    }
+
+    @Override
+    public TransportType getType() {
+        return TransportType.FIX;  // or TransportType.REST
+    }
+}
 ```
 
 ## Domain Objects

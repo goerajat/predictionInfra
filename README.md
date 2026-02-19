@@ -5,22 +5,44 @@ A multi-module Java trading platform for [Kalshi](https://kalshi.com/) binary op
 ## Highlights
 
 - **Plug-and-play strategy framework** — write a strategy class, drop its name into a config file, and the platform handles discovery, lifecycle, market subscriptions, and risk enforcement automatically
+- **Dual-transport order routing** — REST API and FIX protocol (FIXT.1.1 / FIX 5.0 SP2) with automatic failover
 - **Live market data** via REST and WebSocket (orderbook snapshots, deltas, position updates, market lifecycle events)
 - **Built-in risk management** with global limits and per-strategy overrides
 - **External market data integration** — consume real-time stock quotes from E*TRADE (or other providers) alongside Kalshi event data
 - **JavaFX UI** for live orderbook visualization, strategy management, order/position blotters, and risk configuration
 
+## Screenshots
+
+### Strategy Manager
+
+The main dashboard lists all discovered strategies with their event tickers, market counts, and close times. Strategies can be individually activated/deactivated or controlled in bulk. The bottom activity log streams timestamped system events (initialization, authentication, strategy creation).
+
+![Strategy Manager](assets/StrategyManager.png)
+
+### Strategy Detail Dialog
+
+Clicking a strategy opens its detail view. The header shows the event title, live external market data (SPX price), strategy type, and running status. Below that: an activity log with per-strategy events, order and position blotters, and a scrollable row of live market orderbooks sorted by volume with bid/ask depth at each price level.
+
+![Strategy Detail Dialog](assets/StrategyDialog.png)
+
+### External Market Data
+
+The Market Data tab connects to E\*TRADE for real-time stock quotes. Enter ticker symbols to subscribe, and the table streams live price, change, bid/ask, and volume. Strategies consume this data via `getMarketDataManager()` to inform trading decisions on Kalshi markets.
+
+![External Market Data](assets/MarketData.png)
+
 ## Architecture
 
 ```
-betting-app                 Application layer: demo apps, UI, strategy implementations
+betting-app                     Application layer: demo apps, UI, strategy implementations
     │
-    ├── kalshi-java-client   Core library: Kalshi API client, strategy framework, risk engine
-    ├── etrade-api           E*TRADE client: OAuth 1.0, INTRADAY quotes, subscriptions
-    └── marketdata-api       Provider-agnostic interfaces (Quote, MarketDataManager)
+    ├── kalshi-fix-transport    FIX protocol transport for low-latency order placement
+    ├── kalshi-java-client      Core library: Kalshi API client, strategy framework, risk engine
+    ├── etrade-api              E*TRADE client: OAuth 1.0, INTRADAY quotes, subscriptions
+    └── marketdata-api          Provider-agnostic interfaces (Quote, MarketDataManager)
 
-etrade-sample-app           Standalone E*TRADE console demo
-etrade-javafx-app           Standalone E*TRADE JavaFX demo
+etrade-sample-app              Standalone E*TRADE console demo
+etrade-javafx-app              Standalone E*TRADE JavaFX demo
 ```
 
 ## Requirements
@@ -218,12 +240,72 @@ filter.mutuallyExclusive=true
 filter.parallelThreads=4
 ```
 
+## Order Transport
+
+Orders are routed through a pluggable `OrderTransport` interface. Strategies call `buy()`, `sell()`, `cancelOrder()`, and `amendOrder()` exactly as before — the transport layer is completely transparent.
+
+### Transport Modes
+
+| Mode | Description |
+|------|-------------|
+| `rest` | REST API only (default). All orders sent via HTTPS. |
+| `fix` | FIX protocol only. Orders sent as FIX messages over a persistent TLS session. Fails if the FIX session is disconnected. |
+| `fix-with-rest-fallback` | FIX when connected, automatic REST fallback when FIX is unavailable or errors occur. |
+
+### How It Works
+
+```
+Strategy.buy() / sell() / cancelOrder() / amendOrder()
+    │
+    ▼
+OrderService — risk checks (unchanged)
+    │
+    ▼
+OrderTransport (interface)
+    ├── RestOrderTransport      HTTP POST/DELETE via KalshiClient
+    ├── FixOrderTransport       FIX NewOrderSingle (D) → ExecutionReport (8)
+    └── FallbackOrderTransport  Tries FIX first, falls back to REST
+```
+
+When using FIX transport, ExecutionReports are parsed back into the same `Order` model used by REST, so strategies and the `OrderManager` receive identical objects regardless of transport. FIX ExecutionReports also feed directly into `OrderManager.injectOrderUpdate()`, providing sub-millisecond order state callbacks instead of waiting for the 5-second REST polling cycle.
+
+### FIX Protocol Details
+
+- **Protocol**: FIXT.1.1 / FIX 5.0 SP2
+- **Production**: `fix.elections.kalshi.com:8228` (no retransmit) or `:8230` (with retransmit)
+- **Demo**: `fix.demo.kalshi.co` (same ports)
+- **TLS required** — plain TCP connections are rejected
+- **Supported operations**: NewOrderSingle (D), OrderCancelRequest (F), OrderCancelReplaceRequest (G)
+- **Side encoding**: `1` = Buy Yes, `2` = Sell No (the FIX layer handles mapping from Kalshi's yes/no + buy/sell model)
+
+### Configuration
+
+Set the transport mode and FIX session properties in `strategy.properties`:
+
+```properties
+# Transport mode (default: rest)
+transport.mode=fix-with-rest-fallback
+
+# FIX session settings
+fix.senderCompId=your-api-key-uuid       # Required: your Kalshi FIX API key
+fix.host=fix.elections.kalshi.com         # Default for production
+fix.port=8228                             # 8228 = no retransmit, 8230 = with retransmit
+fix.targetCompId=KalshiNR                 # KalshiNR for port 8228, KalshiRT for 8230
+fix.heartbeatInterval=30                  # Heartbeat in seconds
+fix.ssl.enabled=true                      # TLS (required by Kalshi)
+fix.orderTimeoutSeconds=5                 # Max wait for ExecutionReport
+fix.useDemo=false                         # true → connects to fix.demo.kalshi.co
+```
+
+The `fix.senderCompId` is the same UUID as your Kalshi API key. If omitted, the platform falls back to REST with a warning.
+
 ## Project Modules
 
 | Module | Description |
 |--------|-------------|
-| `kalshi-java-client` | Core Kalshi API client (REST + WebSocket), strategy framework, risk engine, event filtering |
-| `betting-app` | Application layer with demo apps, JavaFX UI, and strategy implementations |
+| `kalshi-java-client` | Core Kalshi API client (REST + WebSocket), strategy framework, risk engine, order transport abstraction |
+| `kalshi-fix-transport` | FIX protocol transport — session management, FIX message encoding/parsing, fallback logic |
+| `betting-app` | Application layer with demo apps, JavaFX UI, strategy implementations, and FIX transport wiring |
 | `etrade-api` | E*TRADE market data client with OAuth 1.0, quote subscriptions, and JavaFX auth dialog |
 | `marketdata-api` | Provider-agnostic market data interfaces (`MarketDataManager`, `Quote`) |
 | `etrade-sample-app` | Standalone E*TRADE console demo |

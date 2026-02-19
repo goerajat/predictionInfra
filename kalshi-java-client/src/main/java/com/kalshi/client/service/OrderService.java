@@ -8,6 +8,8 @@ import com.kalshi.client.exception.OrderException;
 import com.kalshi.client.model.*;
 import com.kalshi.client.risk.RiskChecker;
 import com.kalshi.client.risk.RiskConfig;
+import com.kalshi.client.transport.OrderTransport;
+import com.kalshi.client.transport.RestOrderTransport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,10 +38,32 @@ public class OrderService {
     private static final int MAX_FILLS_LIMIT = 200;
 
     private final KalshiClient client;
+    private final RestOrderTransport restTransport;
     private RiskChecker riskChecker;
+    private OrderTransport orderTransport;
 
     public OrderService(KalshiClient client) {
         this.client = client;
+        this.restTransport = new RestOrderTransport(client);
+    }
+
+    /**
+     * Set an alternative order transport (e.g., FIX).
+     * When set and available, order operations will be routed through this transport.
+     * Risk checking still happens in OrderService before delegation.
+     *
+     * @param transport The order transport to use
+     */
+    public void setOrderTransport(OrderTransport transport) {
+        this.orderTransport = transport;
+        log.info("Order transport configured: {}", transport.getType());
+    }
+
+    /**
+     * Get the current order transport, or null if using default REST.
+     */
+    public OrderTransport getOrderTransport() {
+        return orderTransport;
     }
 
     /**
@@ -85,7 +109,7 @@ public class OrderService {
             riskChecker.checkOrder(request);
         }
 
-        return client.post("/portfolio/orders", request, "order", Order.class);
+        return getActiveTransport().createOrder(request);
     }
 
     /**
@@ -167,7 +191,7 @@ public class OrderService {
      * @return Canceled Order object (with remaining_count = 0)
      */
     public Order cancelOrder(String orderId) {
-        return client.delete("/portfolio/orders/" + orderId, "order", Order.class);
+        return getActiveTransport().cancelOrder(orderId);
     }
 
     /**
@@ -176,11 +200,7 @@ public class OrderService {
      * @param orderIds List of order IDs to cancel
      */
     public void cancelOrders(List<String> orderIds) {
-        if (orderIds.size() > 20) {
-            throw new OrderException("Cannot cancel more than 20 orders at once");
-        }
-        BatchCancelRequest request = new BatchCancelRequest(orderIds);
-        client.delete("/portfolio/orders/batched", request, String.class);
+        getActiveTransport().cancelOrders(orderIds);
     }
 
     /**
@@ -208,7 +228,7 @@ public class OrderService {
             riskChecker.checkAmendment(orderId, currentOrder, request);
         }
 
-        return client.post("/portfolio/orders/" + orderId + "/amend", request, "order", Order.class);
+        return getActiveTransport().amendOrder(orderId, request);
     }
 
     /**
@@ -440,6 +460,16 @@ public class OrderService {
      */
     public List<Trade> getAllFillsByMarket(String ticker) {
         return getAllFills(FillQuery.builder().ticker(ticker).build());
+    }
+
+    /**
+     * Get the active transport. Uses the configured transport if available, otherwise REST.
+     */
+    private OrderTransport getActiveTransport() {
+        if (orderTransport != null && orderTransport.isAvailable()) {
+            return orderTransport;
+        }
+        return restTransport;
     }
 
     private PaginatedResponse<Order> parseOrdersPaginated(String json) {

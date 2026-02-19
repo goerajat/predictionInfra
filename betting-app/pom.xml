@@ -42,6 +42,13 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- Kalshi FIX Transport -->
+        <dependency>
+            <groupId>com.betting</groupId>
+            <artifactId>kalshi-fix-transport</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- JavaFX -->
         <dependency>
             <groupId>org.openjfx</groupId>

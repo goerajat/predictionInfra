@@ -202,6 +202,61 @@ public class OrderManager {
     }
 
     /**
+     * Inject an externally-provided order state change (e.g., from a FIX ExecutionReport).
+     * Updates internal maps and fires OrderChangeEvent listeners immediately,
+     * providing sub-millisecond callbacks instead of waiting for the next poll cycle.
+     *
+     * @param order The updated order state
+     */
+    public void injectOrderUpdate(Order order) {
+        if (order == null || order.getOrderId() == null) return;
+
+        String orderId = order.getOrderId();
+        Order existing = ordersById.get(orderId);
+
+        if (existing == null) {
+            // New order
+            ordersById.put(orderId, order);
+            if (order.getTicker() != null) {
+                ordersByTicker.computeIfAbsent(order.getTicker(), k -> new CopyOnWriteArrayList<>())
+                        .add(order);
+            }
+            notifyListeners(new OrderChangeEvent(OrderChangeType.ADDED, order, null));
+            log.debug("Order injected (new): {}", orderId);
+        } else if (isTerminalStatus(order.getStatus())) {
+            // Order completed/canceled/rejected — remove from tracking
+            ordersById.remove(orderId);
+            if (order.getTicker() != null) {
+                List<Order> tickerOrders = ordersByTicker.get(order.getTicker());
+                if (tickerOrders != null) {
+                    tickerOrders.removeIf(o -> orderId.equals(o.getOrderId()));
+                    if (tickerOrders.isEmpty()) {
+                        ordersByTicker.remove(order.getTicker());
+                    }
+                }
+            }
+            notifyListeners(new OrderChangeEvent(OrderChangeType.REMOVED, order, null));
+            log.debug("Order injected (removed): {} status={}", orderId, order.getStatus());
+        } else {
+            // Modified
+            ordersById.put(orderId, order);
+            if (order.getTicker() != null) {
+                List<Order> tickerOrders = ordersByTicker.get(order.getTicker());
+                if (tickerOrders != null) {
+                    tickerOrders.replaceAll(o -> orderId.equals(o.getOrderId()) ? order : o);
+                }
+            }
+            notifyListeners(new OrderChangeEvent(OrderChangeType.MODIFIED, order, null));
+            log.debug("Order injected (modified): {}", orderId);
+        }
+    }
+
+    private boolean isTerminalStatus(String status) {
+        return "executed".equals(status) || "canceled".equals(status)
+                || "expired".equals(status) || "rejected".equals(status);
+    }
+
+    /**
      * Force an immediate poll (outside the regular schedule).
      */
     public void pollNow() {

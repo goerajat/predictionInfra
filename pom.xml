@@ -14,6 +14,7 @@
   <modules>
     <module>marketdata-api</module>
     <module>kalshi-java-client</module>
+    <module>kalshi-fix-transport</module>
     <module>betting-app</module>
     <module>etrade-api</module>
     <module>etrade-sample-app</module>

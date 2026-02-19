@@ -47,6 +47,8 @@ etrade-api              (E*TRADE client: OAuth 1.0, INTRADAY quotes, subscriptio
     ↑
 kalshi-java-client      (core: Kalshi REST + WebSocket client, strategy framework, risk mgmt)
     ↑
+kalshi-fix-transport    (FIX protocol order transport using OmniBridge FIX engine)
+    ↑
 betting-app             (application: demo apps, JavaFX UI, strategy implementations)
 
 etrade-sample-app       (standalone console demo for E*TRADE)
@@ -65,7 +67,24 @@ Entry point: `KalshiApi` (builder pattern). Provides access to all services via 
 - **Risk management** (`RiskChecker`, `RiskConfig`) — per-order/position limits with per-strategy overrides
 - **Event filtering** (`EventFilter`, `EventFilterCriteria`) — filter events by series, date range, category, title pattern
 - **Authentication** — RSA-PSS SHA256 signing via `KalshiAuthenticator`
+- **Transport abstraction** (`OrderTransport`, `RestOrderTransport`) — pluggable order routing. `OrderService` delegates to the active transport when set via `setOrderTransport()`. Risk checking remains in `OrderService` before delegation.
 - **Exception hierarchy** — `KalshiApiException` → `AuthenticationException`, `RateLimitException`, `OrderException`
+
+### kalshi-fix-transport — FIX Order Transport
+
+Integrates the OmniBridge FIX engine (from `C:\Users\rajat\connectivity`) as an alternative order transport. Requires `mvn install -DskipTests -pl protocols/fix/message,protocols/fix/engine -am` from the connectivity repo first.
+
+- **`KalshiFixConfig`** — FIX session configuration (host, port, senderCompId, etc.) loaded from `strategy.properties`
+- **`FixFieldMapper`** — bidirectional mapping between Kalshi REST model and FIX messages. Critical: Kalshi FIX uses Side 1=Buy Yes, Side 2=Sell No
+- **`KalshiFixSessionManager`** — owns `FixEngine` + `FixSession`, handles FIXT.1.1/FIX50SP2 logon with TLS, custom tags up to 21009
+- **`FixOrderTransport`** — implements `OrderTransport`, sends NewOrderSingle (D) and blocks for ExecutionReport via `CompletableFuture`
+- **`FixOrderStateTracker`** — processes ExecutionReports, routes to pending futures, fires `OrderManager.injectOrderUpdate()` for live updates
+- **`FallbackOrderTransport`** — tries FIX first, falls back to REST if unavailable
+
+Transport modes (set `transport.mode` in `strategy.properties`):
+- `rest` — REST only (default)
+- `fix` — FIX only
+- `fix-with-rest-fallback` — FIX primary, REST fallback
 
 ### betting-app — Application Layer
 
@@ -74,7 +93,8 @@ Entry point: `KalshiApi` (builder pattern). Provides access to all services via 
 - `MultiEventStrategyDemo` — runs multiple strategies
 - Strategy implementations: `IndexEventStrategy`, `ExampleStrategy`
 - UI components: `StrategyManagerTab`, `OrderBlotterTable`, `PositionBlotterTable`, `RiskConfigPanel`
-- Configuration: `strategy.properties` (series tickers, strategy class, filters, risk limits, API credentials) and `etrade-config.properties`
+- FIX transport wiring: `FixTransportFactory` — configures and starts FIX session from strategy.properties
+- Configuration: `strategy.properties` (series tickers, strategy class, filters, risk limits, API credentials, FIX transport) and `etrade-config.properties`
 
 ### API Environments
 
@@ -83,9 +103,15 @@ Entry point: `KalshiApi` (builder pattern). Provides access to all services via 
 - **E*TRADE Sandbox**: `https://apisb.etrade.com`
 - **E*TRADE Production**: `https://api.etrade.com`
 
+### FIX Environments
+
+- **Kalshi FIX Production**: `fix.elections.kalshi.com:8228` (no retransmit) or `:8230` (with retransmit)
+- **Kalshi FIX Demo**: `fix.demo.kalshi.co` (same ports)
+- **TargetCompID**: `KalshiNR` (port 8228) or `KalshiRT` (port 8230)
+
 ### Key Dependencies
 
-OkHttp 4.12.0 (HTTP), Jackson 2.17.0 (JSON), SLF4J 2.0.12 + Logback (logging), JavaFX 21 (GUI, optional), JUnit 5.10.2 (testing).
+OkHttp 4.12.0 (HTTP), Jackson 2.17.0 (JSON), SLF4J 2.0.12 + Logback (logging), JavaFX 21 (GUI, optional), JUnit 5.10.2 (testing), OmniBridge FIX Engine 1.0.0-SNAPSHOT (FIX transport).
 
 ## Important Notes
 
