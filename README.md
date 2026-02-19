@@ -1,33 +1,37 @@
-# Online Betting Platform
+# predictionInfra
 
-A multi-module Java trading platform for [Kalshi](https://kalshi.com/) binary options markets with an extensible plug-and-play strategy framework, integrated risk management, and optional [E*TRADE](https://developer.etrade.com/) market data.
+A multi-module Java infrastructure platform for building, deploying, and managing automated trading strategies on prediction markets. Designed for [Kalshi](https://kalshi.com/) event contracts with optional real-time equity market data from [E*TRADE](https://developer.etrade.com/).
 
-## Highlights
+## Overview
 
-- **Plug-and-play strategy framework** — write a strategy class, drop its name into a config file, and the platform handles discovery, lifecycle, market subscriptions, and risk enforcement automatically
+predictionInfra provides a complete runtime for prediction market strategy development — from market data ingestion and signal generation to order execution and risk enforcement. Strategies are self-contained units of trading logic that plug into the platform without modifying any framework code. The platform handles API connectivity, market discovery, order routing, position tracking, and risk management.
+
+### Key Capabilities
+
+- **Strategy framework** — extend `EventStrategy`, register via config, and the platform handles discovery, lifecycle, market subscriptions, and risk enforcement
 - **Dual-transport order routing** — REST API and FIX protocol (FIXT.1.1 / FIX 5.0 SP2) with automatic failover
-- **Live market data** via REST and WebSocket (orderbook snapshots, deltas, position updates, market lifecycle events)
-- **Built-in risk management** with global limits and per-strategy overrides
-- **External market data integration** — consume real-time stock quotes from E*TRADE (or other providers) alongside Kalshi event data
-- **JavaFX UI** for live orderbook visualization, strategy management, order/position blotters, and risk configuration
+- **Real-time market data** via REST polling and WebSocket streaming (orderbook snapshots, deltas, position updates, market lifecycle events)
+- **Risk management** — platform-enforced limits on order size, notional, and position exposure with per-strategy overrides
+- **Cross-asset data integration** — consume real-time equity quotes from E*TRADE (or other providers) alongside Kalshi event data for signal generation
+- **JavaFX dashboard** — live orderbook visualization, strategy management, order/position blotters, and risk configuration
 
 ## Screenshots
 
 ### Strategy Manager
 
-The main dashboard lists all discovered strategies with their event tickers, market counts, and close times. Strategies can be individually activated/deactivated or controlled in bulk. The bottom activity log streams timestamped system events (initialization, authentication, strategy creation).
+The main dashboard lists all discovered strategies with their event tickers, market counts, and close times. Strategies can be individually activated/deactivated or controlled in bulk. The activity log streams timestamped system events.
 
 ![Strategy Manager](assets/StrategyManager.png)
 
-### Strategy Detail Dialog
+### Strategy Detail
 
-Clicking a strategy opens its detail view. The header shows the event title, live external market data (SPX price), strategy type, and running status. Below that: an activity log with per-strategy events, order and position blotters, and a scrollable row of live market orderbooks sorted by volume with bid/ask depth at each price level.
+Clicking a strategy opens its detail view showing the event title, live external market data (e.g., SPX price), strategy type, and running status. Below: activity log, order and position blotters, and live orderbooks sorted by volume with bid/ask depth at each price level.
 
 ![Strategy Detail Dialog](assets/StrategyDialog.png)
 
 ### External Market Data
 
-The Market Data tab connects to E\*TRADE for real-time stock quotes. Enter ticker symbols to subscribe, and the table streams live price, change, bid/ask, and volume. Strategies consume this data via `getMarketDataManager()` to inform trading decisions on Kalshi markets.
+The Market Data tab connects to E\*TRADE for real-time equity quotes. Strategies consume this data via `getMarketDataManager()` to inform trading decisions on prediction markets.
 
 ![External Market Data](assets/MarketData.png)
 
@@ -36,9 +40,9 @@ The Market Data tab connects to E\*TRADE for real-time stock quotes. Enter ticke
 ```
 betting-app                     Application layer: demo apps, UI, strategy implementations
     │
-    ├── kalshi-fix-transport    FIX protocol transport for low-latency order placement
-    ├── kalshi-java-client      Core library: Kalshi API client, strategy framework, risk engine
-    ├── etrade-api              E*TRADE client: OAuth 1.0, INTRADAY quotes, subscriptions
+    ├── kalshi-fix-transport    FIX protocol transport for low-latency order execution
+    ├── kalshi-java-client      Core: API client, strategy framework, risk engine
+    ├── etrade-api              E*TRADE client: OAuth 1.0, real-time quotes, subscriptions
     └── marketdata-api          Provider-agnostic interfaces (Quote, MarketDataManager)
 
 etrade-sample-app              Standalone E*TRADE console demo
@@ -53,16 +57,16 @@ etrade-javafx-app              Standalone E*TRADE JavaFX demo
 ## Quick Start
 
 ```bash
-# Build everything
+# Build and test
 mvn clean install
 
-# Run tests
+# Run tests only
 mvn test
 ```
 
 ### API Credentials
 
-**Kalshi** — generate an API key at [kalshi.com/settings/api](https://kalshi.com/settings/api). You'll get a Key ID and a private key PEM file. Configure them in `strategy.properties`:
+**Kalshi** — generate an API key at [kalshi.com/settings/api](https://kalshi.com/settings/api). Configure in `strategy.properties`:
 
 ```properties
 api.keyId=your-key-id
@@ -80,15 +84,15 @@ consumer.secret=your-consumer-secret
 use.sandbox=true
 ```
 
-## Plug-and-Play Strategy Framework
+## Strategy Framework
 
-The platform's core design principle is that **strategies are self-contained units of trading logic** that plug into the platform without modifying any framework code. The platform handles everything else: API connectivity, market data subscriptions, order routing, position tracking, and risk enforcement.
+The platform's core design principle is that **strategies are self-contained units of trading logic** that plug into the runtime without modifying any framework code. The platform manages everything else: API connectivity, market data subscriptions, order routing, position tracking, and risk enforcement.
 
 ### How It Works
 
-1. **Write a strategy class** that extends `EventStrategy` (or `TradingStrategy` for non-event strategies)
+1. **Write a strategy class** that extends `EventStrategy`
 2. **Set the class name** in `strategy.properties`
-3. **Run the app** — the `StrategyLauncher` discovers your class via reflection, creates instances per matched event, wires up all services, and manages the full lifecycle
+3. **Run the app** — `StrategyLauncher` discovers your class via reflection, creates instances per matched event, wires up all services, and manages the full lifecycle
 
 ### Strategy Lifecycle
 
@@ -129,34 +133,25 @@ public class MyStrategy extends EventStrategy {
         super(eventTicker);
     }
 
-    // Optional: accept StrategyConfig for access to market filter settings
-    public MyStrategy(String eventTicker, StrategyConfig config) {
-        super(eventTicker);
-    }
-
     @Override
     protected boolean shouldTrackMarket(Market market) {
-        // Filter which markets within the event to track
         return "active".equalsIgnoreCase(market.getStatus())
             && market.getVolume24h() > 100;
     }
 
     @Override
     protected void onStrategyReady() {
-        // Called after event loaded and markets filtered (still inactive)
-        makeActive();  // subscribe to market data and start timer
+        makeActive();
     }
 
     @Override
     protected void onMarketDataUpdate(ManagedMarket market) {
-        // Live orderbook update — react to price changes
         Integer bid = market.getBestYesBid();
         Integer ask = market.getBestYesAsk();
     }
 
     @Override
     public void onTimer() {
-        // Called every N seconds — check conditions, place orders
         for (ManagedMarket m : getTrackedMarkets()) {
             if (m.getYesSpread() != null && m.getYesSpread() > 5) {
                 buy(m.getTicker(), "yes", 1, m.getBestYesBid() + 1);
@@ -172,17 +167,16 @@ public class MyStrategy extends EventStrategy {
 }
 ```
 
-Then register it:
+Register it in `strategy.properties`:
 
 ```properties
-# strategy.properties
 strategy.class=com.example.MyStrategy
 series.tickers=KXINX,KXINXU
 strategy.maxStrategies=10
 strategy.timerIntervalSeconds=10
 ```
 
-### Available Lifecycle Hooks
+### Lifecycle Hooks
 
 | Hook | When it fires |
 |------|--------------|
@@ -196,16 +190,16 @@ strategy.timerIntervalSeconds=10
 | `onMarketDataConnected/Disconnected()` | WebSocket connection state changes |
 | `onShutdown()` | Application shutting down |
 
-### What the Strategy Gets for Free
+### Services Available to Strategies
 
 - **`getApi()`** — full Kalshi API access (series, events, markets, orders)
-- **`getOrderService()`** — create, cancel, amend orders with `buy()`, `sell()`, `cancelOrder()` helpers
+- **`getOrderService()`** — order operations with `buy()`, `sell()`, `cancelOrder()` helpers
 - **`getOrderManager()`** / **`getPositionManager()`** — live order and position state
 - **`getMarketManager()`** — live orderbook data for subscribed markets
 - **`getMarketDataManager()`** — external market data (E*TRADE quotes) if configured
 - **`logActivity()`** / **`logTrade()`** — structured logging that feeds the UI activity panel
 - **`setDisplayMarkets()`** — control which markets appear in the UI orderbook panel
-- **`setMarketDataLabel()`** — display real-time info in the UI (e.g., "SPX: $5,832.50 +0.5%")
+- **`setMarketDataLabel()`** — display real-time info in the UI header
 
 ## Risk Management
 
@@ -242,23 +236,23 @@ filter.parallelThreads=4
 
 ## Order Transport
 
-Orders are routed through a pluggable `OrderTransport` interface. Strategies call `buy()`, `sell()`, `cancelOrder()`, and `amendOrder()` exactly as before — the transport layer is completely transparent.
+Orders are routed through a pluggable `OrderTransport` interface. Strategies call `buy()`, `sell()`, `cancelOrder()`, and `amendOrder()` as normal — the transport layer is transparent.
 
 ### Transport Modes
 
 | Mode | Description |
 |------|-------------|
 | `rest` | REST API only (default). All orders sent via HTTPS. |
-| `fix` | FIX protocol only. Orders sent as FIX messages over a persistent TLS session. Fails if the FIX session is disconnected. |
-| `fix-with-rest-fallback` | FIX when connected, automatic REST fallback when FIX is unavailable or errors occur. |
+| `fix` | FIX protocol only. Orders sent as FIX messages over a persistent TLS session. Fails if disconnected. |
+| `fix-with-rest-fallback` | FIX when connected, automatic REST fallback when FIX is unavailable. |
 
-### How It Works
+### Order Flow
 
 ```
 Strategy.buy() / sell() / cancelOrder() / amendOrder()
     │
     ▼
-OrderService — risk checks (unchanged)
+OrderService — risk checks
     │
     ▼
 OrderTransport (interface)
@@ -267,39 +261,24 @@ OrderTransport (interface)
     └── FallbackOrderTransport  Tries FIX first, falls back to REST
 ```
 
-When using FIX transport, ExecutionReports are parsed back into the same `Order` model used by REST, so strategies and the `OrderManager` receive identical objects regardless of transport. FIX ExecutionReports also feed directly into `OrderManager.injectOrderUpdate()`, providing sub-millisecond order state callbacks instead of waiting for the 5-second REST polling cycle.
+When using FIX transport, ExecutionReports are parsed back into the same `Order` model used by REST, so strategies and the `OrderManager` receive identical objects regardless of transport. FIX ExecutionReports also feed directly into `OrderManager.injectOrderUpdate()`, providing sub-millisecond order state callbacks instead of waiting for the REST polling cycle.
 
-### FIX Protocol Details
-
-- **Protocol**: FIXT.1.1 / FIX 5.0 SP2
-- **Production**: `fix.elections.kalshi.com:8228` (no retransmit) or `:8230` (with retransmit)
-- **Demo**: `fix.demo.kalshi.co` (same ports)
-- **TLS required** — plain TCP connections are rejected
-- **Supported operations**: NewOrderSingle (D), OrderCancelRequest (F), OrderCancelReplaceRequest (G)
-- **Side encoding**: `1` = Buy Yes, `2` = Sell No (the FIX layer handles mapping from Kalshi's yes/no + buy/sell model)
-
-### Configuration
-
-Set the transport mode and FIX session properties in `strategy.properties`:
+### FIX Configuration
 
 ```properties
-# Transport mode (default: rest)
 transport.mode=fix-with-rest-fallback
 
-# FIX session settings
-fix.senderCompId=your-api-key-uuid       # Required: your Kalshi FIX API key
-fix.host=fix.elections.kalshi.com         # Default for production
-fix.port=8228                             # 8228 = no retransmit, 8230 = with retransmit
-fix.targetCompId=KalshiNR                 # KalshiNR for port 8228, KalshiRT for 8230
-fix.heartbeatInterval=30                  # Heartbeat in seconds
-fix.ssl.enabled=true                      # TLS (required by Kalshi)
-fix.orderTimeoutSeconds=5                 # Max wait for ExecutionReport
-fix.useDemo=false                         # true → connects to fix.demo.kalshi.co
+fix.senderCompId=your-api-key-uuid
+fix.host=fix.elections.kalshi.com
+fix.port=8228                        # 8228 = no retransmit, 8230 = with retransmit
+fix.targetCompId=KalshiNR            # KalshiNR for 8228, KalshiRT for 8230
+fix.heartbeatInterval=30
+fix.ssl.enabled=true
+fix.orderTimeoutSeconds=5
+fix.useDemo=false                    # true → fix.demo.kalshi.co
 ```
 
-The `fix.senderCompId` is the same UUID as your Kalshi API key. If omitted, the platform falls back to REST with a warning.
-
-## Project Modules
+## Modules
 
 | Module | Description |
 |--------|-------------|
@@ -311,7 +290,7 @@ The `fix.senderCompId` is the same UUID as your Kalshi API key. If omitted, the 
 | `etrade-sample-app` | Standalone E*TRADE console demo |
 | `etrade-javafx-app` | Standalone E*TRADE JavaFX demo |
 
-## Running the Apps
+## Running
 
 ```bash
 # Console demo — query Kalshi markets
