@@ -72,7 +72,7 @@ Entry point: `KalshiApi` (builder pattern). Provides access to all services via 
 
 ### kalshi-fix-transport — FIX Order Transport
 
-Integrates the OmniBridge FIX engine (from `C:\Users\rajat\connectivity`) as an alternative order transport. Requires `mvn install -DskipTests -pl protocols/fix/message,protocols/fix/engine -am` from the connectivity repo first.
+Integrates the OmniBridge FIX engine (from `C:\Users\rajat\omnibridge`) as an alternative order transport. Requires `mvn install -DskipTests -pl protocols/fix/message,protocols/fix/engine -am` from the omnibridge repo first.
 
 - **`KalshiFixConfig`** — FIX session configuration (host, port, senderCompId, etc.) loaded from `strategy.properties`
 - **`FixFieldMapper`** — bidirectional mapping between Kalshi REST model and FIX messages. Critical: Kalshi FIX uses Side 1=Buy Yes, Side 2=Sell No
